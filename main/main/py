@@ -1,0 +1,41 @@
+execute("SELECT balance FROM users WHERE user_id = ?", (challenger_id,))
+    c_bal = cursor.fetchone()[0]
+    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (opponent_id,))
+    o_bal = cursor.fetchone()[0]
+    
+    if c_bal < stake or o_bal < stake:
+        await message.answer("❌ У одного из игроков недостаточно монет для этой ставки!")
+        return
+        
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⚔️ Принять дуэль", callback_data=f"accept_{challenger_id}_{opponent_id}_{stake}")]
+    ])
+    
+    await message.answer(
+        f"⚔️ Игрок @{message.from_user.username} вызывает @{message.reply_to_message.from_user.username} на дуэль!\n"
+        f"💰 Ставка: {stake} монет.\nНажмите кнопку ниже, чтобы принять поединок.",
+        reply_markup=keyboard
+    )
+
+@dp.callback_query(F.data.startswith("accept_"))
+async def accept_duel(callback: CallbackQuery):
+    _, c_id, o_id, stake = callback.data.split("_")
+    c_id, o_id, stake = int(c_id), int(o_id), int(stake)
+    
+    if callback.from_user.id != o_id:
+        await callback.answer("❌ Эта дуэль брошена не вам!", show_alert=True)
+        return
+        
+    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (c_id,))
+    c_bal = cursor.fetchone()[0]
+    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (o_id,))
+    o_bal = cursor.fetchone()[0]
+    
+    if c_bal < stake or o_bal < stake:
+        await callback.message.answer("❌ Дуэль отменена: у кого-то не хватает монет.")
+        await callback.message.delete()
+        return
+        
+    winner_id, loser_id = random.choice([(c_id, o_id), (o_id, c_id)])
+    
+    cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (stake, winner_id))
